@@ -1,0 +1,38 @@
+# Global paths
+data_root: /dtu-compute/msaca/sliceA_xray_pc
+results_root: /sliceA_xray_pc/results
+scratch_root: /work3/msaca/
+
+# Session info
+session_name: preprocessing_run_001
+
+# Which datasets to preprocess
+folders_to_preprocess: [1, 2]   # list of folder numbers
+stride: 10                          # skip every n-th file
+
+# Cropping parameters
+crop:
+  start_z: 620
+  end_z: 1410
+  start_x: 300
+  end_x: 2048
+
+# Projection angles
+angles:
+  start: 0
+  end: 360
+  n_projections: 6000
+
+paganin:
+  alpha: 0.2
+  pad: 100
+
+axis_placement: 248 
+
+# File naming patterns
+# ### = folder number (padded to 3 digits)
+# #### = projection number (padded to 4 digits)
+filenames:
+  projection: "HA900_3um_mars_rock_###_/HA900_3um_mars_rock_###_####.edf"
+  flat:       "HA900_3um_mars_rock_###_/refHST6000.edf"
+  dark:       "HA900_3um_mars_rock_###_/dark.edf"   #dark.edf and darkend0000.edf
