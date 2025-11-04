@@ -1,10 +1,10 @@
 # Global paths
 data_root: /dtu-compute/msaca/sliceA_xray_pc
 results_root: /dtu-compute/msaca/sliceA_xray_pc/results
-scratch_root: /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001
+scratch_root: /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_002
 
 # Session info
-session_name: fbp_01
+session_name: fbp_02
 gpu_size: 16
 
 wavelength: 70   # In KeV. (This variable is not used)
@@ -12,8 +12,8 @@ pixel_size: 3  # In microns
 
 
 # Which datasets to preprocess
-folders_to_preprocess: [1,2,3,4,5,6,7,]   # list of folder numbers
-stride: 1                          # skip every n-th file
+folders_to_preprocess: [1,2,]   # list of folder numbers
+stride: 10                          # skip every n-th file
 
 # Cropping parameters
 crop:

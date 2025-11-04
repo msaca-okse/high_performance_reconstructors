@@ -1,0 +1,59 @@
+[Folder 1] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_001_ with 24 workers...
+
+------------------------------------------------------------
+Sender: LSF System <lsfadmin@hpc.dtu.dk>
+Subject: Job 26350796: <preproc_job> in cluster <dcc> Exited
+
+Job <preproc_job> was submitted from host <gbarlogin1> by user <msaca> in cluster <dcc> at Thu Oct  2 10:31:20 2025
+Job was executed on host(s) <16*n-62-20-5>, in queue <gpuv100>, as user <msaca> in cluster <dcc> at Thu Oct  2 13:16:53 2025
+</zhome/71/c/146676> was used as the home directory.
+</zhome/71/c/146676/reconstructors_for_hpc> was used as the working directory.
+Started at Thu Oct  2 13:16:53 2025
+Terminated at Thu Oct  2 13:21:56 2025
+Results reported at Thu Oct  2 13:21:56 2025
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -q gpuv100
+#BSUB -J preproc_job
+#BSUB -n 16
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=4096]"
+#BSUB -oo logs/preproc_%J.out
+#BSUB -eo logs/preproc_%J.err
+#BSUB -W 24:00                 # Wall time (e.g., 1 hour)
+
+
+source /zhome/71/c/146676/miniconda3/bin/activate && conda activate cil
+python reconstructor.py --config reconstruction_settings_1.yaml
+
+
+------------------------------------------------------------
+
+TERM_MEMLIMIT: job killed after reaching LSF memory usage limit.
+Exited with exit code 137.
+
+Resource usage summary:
+
+    CPU time :                                   190.14 sec.
+    Max Memory :                                 65536 MB
+    Average Memory :                             39364.50 MB
+    Total Requested Memory :                     65536.00 MB
+    Delta Memory :                               0.00 MB
+    Max Swap :                                   -
+    Max Processes :                              28
+    Max Threads :                                32
+    Run time :                                   363 sec.
+    Turnaround time :                            10236 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file <logs/preproc_26350796.err> for stderr output of this job.
+

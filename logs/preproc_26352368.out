@@ -1,0 +1,99 @@
+[Folder 1] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_001_ with 24 workers...
+[Folder 1] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 1] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_001_ with 24 workers...
+[Folder 1] Done saving 790 reconstruction files.
+[Folder 2] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_002_ with 24 workers...
+[Folder 2] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 2] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_002_ with 24 workers...
+[Folder 2] Done saving 790 reconstruction files.
+[Folder 3] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_003_ with 24 workers...
+[Folder 3] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 3] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_003_ with 24 workers...
+[Folder 3] Done saving 790 reconstruction files.
+[Folder 4] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_004_ with 24 workers...
+[Folder 4] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 4] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_004_ with 24 workers...
+[Folder 4] Done saving 790 reconstruction files.
+[Folder 5] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_005_ with 24 workers...
+[Folder 5] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 5] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_005_ with 24 workers...
+[Folder 5] Done saving 790 reconstruction files.
+[Folder 6] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_006_ with 24 workers...
+[Folder 6] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 6] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_006_ with 24 workers...
+[Folder 6] Done saving 790 reconstruction files.
+[Folder 7] Loading 790 preprocess files from /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_007_ with 24 workers...
+[Folder 7] Loaded volume with shape (790, 3000, 3248)
+Splitted sinogram of size 
+[INFO] Sinogram size: 30.79 GB. Split into 6 chunks. Largest chunk size: 5.30 GB (limit 5.33 GB).
+[Folder 7] Saving 790 reconstruction files to /dtu-compute/msaca/sliceA_xray_pc/results/fbp_01/HA900_3um_mars_rock_007_ with 24 workers...
+[Folder 7] Done saving 790 reconstruction files.
+
+------------------------------------------------------------
+Sender: LSF System <lsfadmin@hpc.dtu.dk>
+Subject: Job 26352368: <preproc_job> in cluster <dcc> Done
+
+Job <preproc_job> was submitted from host <gbarlogin1> by user <msaca> in cluster <dcc> at Thu Oct  2 13:28:59 2025
+Job was executed on host(s) <16*n-62-20-5>, in queue <gpuv100>, as user <msaca> in cluster <dcc> at Thu Oct  2 13:29:01 2025
+</zhome/71/c/146676> was used as the home directory.
+</zhome/71/c/146676/reconstructors_for_hpc> was used as the working directory.
+Started at Thu Oct  2 13:29:01 2025
+Terminated at Thu Oct  2 14:29:31 2025
+Results reported at Thu Oct  2 14:29:31 2025
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -q gpuv100
+#BSUB -J preproc_job
+#BSUB -n 16
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=8192]"
+#BSUB -oo logs/preproc_%J.out
+#BSUB -eo logs/preproc_%J.err
+#BSUB -W 24:00                 # Wall time (e.g., 1 hour)
+
+
+source /zhome/71/c/146676/miniconda3/bin/activate && conda activate cil
+python reconstructor.py --config reconstruction_settings_1.yaml
+
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   2862.14 sec.
+    Max Memory :                                 104089 MB
+    Average Memory :                             50911.41 MB
+    Total Requested Memory :                     131072.00 MB
+    Delta Memory :                               26983.00 MB
+    Max Swap :                                   -
+    Max Processes :                              28
+    Max Threads :                                34
+    Run time :                                   3632 sec.
+    Turnaround time :                            3632 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file <logs/preproc_26352368.err> for stderr output of this job.
+

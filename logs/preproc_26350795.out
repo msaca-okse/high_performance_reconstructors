@@ -1,0 +1,99 @@
+[Folder 1] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 1] Loading 6000 projections with 48 workers...
+[Folder 1] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 1] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_001_ with 48 workers...
+[Folder 1] Done saving 790 preprocess files.
+[Folder 2] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 2] Loading 6000 projections with 48 workers...
+[Folder 2] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 2] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_002_ with 48 workers...
+[Folder 2] Done saving 790 preprocess files.
+[Folder 3] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 3] Loading 6000 projections with 48 workers...
+[Folder 3] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 3] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_003_ with 48 workers...
+[Folder 3] Done saving 790 preprocess files.
+[Folder 4] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 4] Loading 6000 projections with 48 workers...
+[Folder 4] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 4] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_004_ with 48 workers...
+[Folder 4] Done saving 790 preprocess files.
+[Folder 5] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 5] Loading 6000 projections with 48 workers...
+[Folder 5] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 5] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_005_ with 48 workers...
+[Folder 5] Done saving 790 preprocess files.
+[Folder 6] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 6] Loading 6000 projections with 48 workers...
+[Folder 6] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 6] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_006_ with 48 workers...
+[Folder 6] Done saving 790 preprocess files.
+[Folder 7] Loaded dark (790, 1748), flat (790, 1748)
+[Folder 7] Loading 6000 projections with 48 workers...
+[Folder 7] Loaded projections: (6000, 790, 1748)
+Splitting data into 94 batches of up to 32 slices each.
+[Folder 7] Saving 790 preprocess files to /dtu-compute/msaca/sliceA_xray_pc/cache/preprocessing_run_001/HA900_3um_mars_rock_007_ with 48 workers...
+[Folder 7] Done saving 790 preprocess files.
+
+------------------------------------------------------------
+Sender: LSF System <lsfadmin@hpc.dtu.dk>
+Subject: Job 26350795: <preproc_job> in cluster <dcc> Done
+
+Job <preproc_job> was submitted from host <gbarlogin1> by user <msaca> in cluster <dcc> at Thu Oct  2 10:31:20 2025
+Job was executed on host(s) <32*n-62-12-64>, in queue <hpc>, as user <msaca> in cluster <dcc> at Thu Oct  2 10:31:20 2025
+</zhome/71/c/146676> was used as the home directory.
+</zhome/71/c/146676/reconstructors_for_hpc> was used as the working directory.
+Started at Thu Oct  2 10:31:20 2025
+Terminated at Thu Oct  2 13:16:53 2025
+Results reported at Thu Oct  2 13:16:53 2025
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+#!/bin/bash
+#BSUB -q hpc
+#BSUB -J preproc_job
+#BSUB -n 32
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=8192]"
+#BSUB -oo logs/preproc_%J.out
+#BSUB -eo logs/preproc_%J.err
+#BSUB -W 24:00                 # Wall time (e.g., 1 hour)
+
+
+source /zhome/71/c/146676/miniconda3/bin/activate && conda activate cil
+python preprocessor.py --config reconstruction_settings_1.yaml
+
+
+------------------------------------------------------------
+
+Successfully completed.
+
+Resource usage summary:
+
+    CPU time :                                   12173.63 sec.
+    Max Memory :                                 239027 MB
+    Average Memory :                             131538.56 MB
+    Total Requested Memory :                     262144.00 MB
+    Delta Memory :                               23117.00 MB
+    Max Swap :                                   -
+    Max Processes :                              52
+    Max Threads :                                104
+    Run time :                                   9976 sec.
+    Turnaround time :                            9933 sec.
+
+The output (if any) is above this job summary.
+
+
+
+PS:
+
+Read file <logs/preproc_26350795.err> for stderr output of this job.
+

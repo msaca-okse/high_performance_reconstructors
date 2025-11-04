@@ -1,0 +1,39 @@
+Loaded module: cuda/12.2
+/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/dxchange/__init__.py:63: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+  0%|          | 0/60 [00:00<?, ?it/s]  2%|▏         | 1/60 [00:00<00:24,  2.45it/s]  3%|▎         | 2/60 [00:00<00:19,  3.00it/s]  5%|▌         | 3/60 [00:00<00:17,  3.26it/s]  7%|▋         | 4/60 [00:01<00:16,  3.40it/s]  8%|▊         | 5/60 [00:01<00:15,  3.48it/s] 10%|█         | 6/60 [00:01<00:15,  3.52it/s] 12%|█▏        | 7/60 [00:02<00:14,  3.55it/s] 13%|█▎        | 8/60 [00:02<00:14,  3.57it/s] 15%|█▌        | 9/60 [00:02<00:14,  3.58it/s] 17%|█▋        | 10/60 [00:02<00:13,  3.59it/s] 18%|█▊        | 11/60 [00:03<00:13,  3.60it/s] 20%|██        | 12/60 [00:03<00:13,  3.61it/s] 22%|██▏       | 13/60 [00:03<00:12,  3.62it/s] 23%|██▎       | 14/60 [00:04<00:12,  3.62it/s] 25%|██▌       | 15/60 [00:04<00:12,  3.62it/s] 27%|██▋       | 16/60 [00:04<00:12,  3.62it/s] 28%|██▊       | 17/60 [00:04<00:11,  3.63it/s] 30%|███       | 18/60 [00:05<00:11,  3.63it/s] 32%|███▏      | 19/60 [00:05<00:11,  3.63it/s] 33%|███▎      | 20/60 [00:05<00:11,  3.63it/s] 35%|███▌      | 21/60 [00:05<00:10,  3.62it/s] 37%|███▋      | 22/60 [00:06<00:10,  3.62it/s] 38%|███▊      | 23/60 [00:06<00:10,  3.62it/s] 40%|████      | 24/60 [00:06<00:09,  3.62it/s] 42%|████▏     | 25/60 [00:07<00:09,  3.63it/s] 43%|████▎     | 26/60 [00:07<00:09,  3.63it/s] 45%|████▌     | 27/60 [00:07<00:09,  3.63it/s] 45%|████▌     | 27/60 [00:07<00:09,  3.44it/s]
+Traceback (most recent call last):
+  File "/zhome/71/c/146676/reconstructors_for_hpc/preprocessor.py", line 285, in <module>
+    p_data = run_paganin_in_batches(cfg, rearranged_data).transpose([1,0,2])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/reconstructors_for_hpc/preprocessor.py", line 199, in run_paganin_in_batches
+    return paganin_batch(cfg, rearranged_data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/reconstructors_for_hpc/preprocessor.py", line 173, in paganin_batch
+    data_batch = processor.get_output(override_filter={'alpha':alpha})
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/cil/processors/PaganinProcessor.py", line 353, in get_output
+    return super().get_output(out)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/cil/framework/processors.py", line 120, in get_output
+    out = self.process(out=out)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/cil/processors/PaganinProcessor.py", line 268, in process
+    padded_buffer[:] = ifft2(fI*self.filter).real
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/scipy/fft/_backend.py", line 28, in __ua_function__
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/scipy/fft/_basic_backend.py", line 114, in ifft2
+    return ifftn(x, s, axes, norm, overwrite_x, workers, plan=plan)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/scipy/fft/_basic_backend.py", line 103, in ifftn
+    return _execute_nD('ifftn', _pocketfft.ifftn, x, s=s, axes=axes, norm=norm,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/scipy/fft/_basic_backend.py", line 45, in _execute_nD
+    return pocketfft_func(x, s=s, axes=axes, norm=norm,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/scipy/fft/_pocketfft/basic.py", line 149, in c2cn
+    return pfft.c2c(tmp, axes, forward, norm, out, workers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

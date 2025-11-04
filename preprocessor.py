@@ -8,6 +8,8 @@ from multiprocessing import Pool, cpu_count
 from cil.framework import AcquisitionGeometry, AcquisitionData, ImageGeometry
 from cil.processors import PaganinProcessor
 import os
+import argparse
+import gc
 
 
 def load_config(config_path: str | Path) -> dict:
@@ -179,7 +181,7 @@ def _paganin_worker(args):
     return paganin_batch(cfg, batch)
 
 
-def run_paganin_in_batches(cfg: dict, rearranged_data: np.ndarray, batch_size: int = 100):
+def run_paganin_in_batches(cfg: dict, rearranged_data: np.ndarray, batch_size: int = 32):
     """
     Run Paganin preprocessing in parallel batches along axis=0.
     
@@ -213,25 +215,40 @@ def run_paganin_in_batches(cfg: dict, rearranged_data: np.ndarray, batch_size: i
 
 def _save_slice(args):
     """Helper for parallel saving of slices."""
-    slice_array, slice_idx, folder_dir = args
-    slice_path = folder_dir / f"slice_{slice_idx:04d}.tif"
+    slice_array, slice_idx, folder_dir, prefix = args
+    slice_path = folder_dir / f"{prefix}_{slice_idx:04d}.tiff"
     tiff.imwrite(slice_path, slice_array.astype(np.float32))
     return slice_path
 
 
-def save_volume_as_tiffs(cfg: dict, folder: int, volume: np.ndarray):
+def save_volume_as_tiffs(cfg: dict, folder: int, volume: np.ndarray, mode: str = "preprocess"):
     """
     Save a 3D numpy volume as individual TIFF slices along axis=0 using multiprocessing.
+    
     Args:
         cfg (dict): configuration dictionary
         folder (int): folder number
         volume (np.ndarray): 3D array (N_slices, H, W)
+        mode (str): "preprocess" → save sinograms to scratch_root
+                    "reconstruction" → save slices to results_root
     """
-    scratch_root = Path(cfg["scratch_root"])
+    if mode not in ["preprocess", "reconstruction"]:
+        raise ValueError("mode must be either 'preprocess' or 'reconstruction'")
+
     session_name = cfg["session_name"]
 
+    # Select base root and prefix based on mode
+    if mode == "preprocess":
+        base_root = Path(cfg["scratch_root"])
+        session_dir = base_root
+        prefix = "sinogram"
+    else:  # reconstruction
+        base_root = Path(cfg["results_root"])
+        session_dir = base_root / session_name
+        prefix = "slice"
+
+
     # Create session subfolder
-    session_dir = scratch_root / session_name
     session_dir.mkdir(parents=True, exist_ok=True)
 
     # Create folder-specific subfolder
@@ -239,111 +256,45 @@ def save_volume_as_tiffs(cfg: dict, folder: int, volume: np.ndarray):
     folder_dir = session_dir / folder_name
     folder_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[Folder {folder}] Saving {volume.shape[0]} slices to {folder_dir} with {cpu_count()} workers...")
+    print(f"[Folder {folder}] Saving {volume.shape[0]} {mode} files to {folder_dir} with {cpu_count()} workers...")
 
     # Prepare arguments for pool
-    args = [(volume[i, :, :], i, folder_dir) for i in range(volume.shape[0])]
+    args = [(volume[i, :, :], i, folder_dir, prefix) for i in range(volume.shape[0])]
 
     with Pool(processes=cpu_count()) as pool:
         pool.map(_save_slice, args)
 
-    print(f"[Folder {folder}] Done saving {volume.shape[0]} slices.")
+    print(f"[Folder {folder}] Done saving {volume.shape[0]} {mode} files.")
 
 
 
+if __name__ == "__main__":
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def folder_processor(i):
-    i = i-1
-    p_pre1 = '/dtu-compute/msaca/sliceA_xray_pc/HA900_3um_mars_rock_00'
-    p_pre2 = '_/HA900_3um_mars_rock_00'
-    q_pre1 = '/dtu-compute/msaca/sliceA_xray_pc/compressed_XA_00'
-    q_pre2 = '_/compressed_XA_00'
-
-    p_post1 = '_####.edf'
-    q_post1 = '_####.tiff'
-
-    q_post_dark = '_/dark/dark.tiff'
-    q_post_dark2 = '_/dark/darkend0000.tiff'
-    q_post_obeam = '_/obeam/refHST6000.tiff'
-
-    p_post_dark = '_/dark.edf'
-    p_post_dark2 = '_/darkend0000.edf'
-    p_post_obeam = '_/refHST6000.edf'
-
-    stride = 1
-    A = range(1,6001, stride)
-    angles = np.linspace(0,360,len(A))
-    folders = [1,2,3,4,5,6,7]
-    start_crop_z = 620
-    end_crop_z = 1410
-    start_crop_x = 300
-    end_crop_x = 2048
-    size_z = end_crop_z - start_crop_z
-    size_x = end_crop_x - start_crop_x
-
-    edf_path_p = p_pre1 + str(folders[i]) + p_pre2 + str(folders[i]) + p_post1
-    tiff_path_q = q_pre1 + str(folders[i]) + q_pre2 + str(folders[i]) + q_post1
-    paths = generate_paths(edf_path_p, A)
-    tiff_paths = generate_paths(tiff_path_q, A)
-    for idx in range(len(paths)):
-        image = read_edf(paths[idx])
-        image = np.squeeze(image)
-        raw_data = image[start_crop_z:end_crop_z,start_crop_x:end_crop_x]
-        tifffile.imwrite(tiff_paths[idx], raw_data)
-
-    edf_path_dark = p_pre1 + str(folders[i]) + p_post_dark
-    edf_path_obeam = p_pre1 + str(folders[i]) + p_post_obeam
-
-    tiff_path_dark = q_pre1 + str(folders[i]) + q_post_dark
-    tiff_path_obeam = q_pre1 + str(folders[i]) + q_post_obeam
-
-
-    image_dark = read_edf(edf_path_dark)
-    image_obeam = read_edf(edf_path_obeam)
-
-
-    image_dark = np.squeeze(image_dark)
-    image_obeam = np.squeeze(image_obeam)
-    raw_dark = image_dark[start_crop_z:end_crop_z,start_crop_x:end_crop_x]
-    raw_obeam = image_obeam[start_crop_z:end_crop_z,start_crop_x:end_crop_x]
-
-    tifffile.imwrite(tiff_path_dark, raw_dark)
-    tifffile.imwrite(tiff_path_obeam, raw_obeam)
-
-
-
-
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Preprocessing pipeline")
-    parser.add_argument("--config", required=True, help="Path to YAML config file")
+    parser = argparse.ArgumentParser(description="Preprocessing for reconstruction")
+    parser.add_argument("--config", type=str, help="Configuration file path")
     args = parser.parse_args()
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
 
-    cfg = load_config(args.config)
-    preprocess(cfg)
+    folders = cfg["folders_to_preprocess"]
+
+    for folder in folders:
+        projs, flat, dark = load_folder(cfg, folder=folder)
+        data = flat_dark_correction(cfg, projs, flat, dark)   #### Do flux correction
+
+        # Free memory from raw inputs once not needed
+        del projs, flat, dark
+        gc.collect()
+
+        rearranged_data = rearrange_data(cfg, data)
+        del data
+        gc.collect()
+
+        p_data = run_paganin_in_batches(cfg, rearranged_data, batch_size = 32).transpose([1,0,2])
+        del rearranged_data
+        gc.collect()
+
+        save_volume_as_tiffs(cfg, folder, p_data, mode="preprocess")
+        del p_data
+        gc.collect()
