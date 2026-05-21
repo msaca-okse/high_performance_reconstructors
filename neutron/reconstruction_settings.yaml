@@ -37,6 +37,15 @@ ob_monitor_region:
   col_start: 1570
   col_end:   1714
 
+# Circular beam mask — pixels outside the beam are zeroed after log-normalisation.
+# Defined as the largest circle fitting inside the bounding rectangle of the beam.
+# Coordinates are in ImageJ convention: x = column (horizontal), y = row (vertical).
+beam_roi:
+  x_min: 256
+  x_max: 1824
+  y_min: 192
+  y_max: 1762
+
 # ── GPU memory budget ─────────────────────────────────────────────────────────
 gpu_size: 16              # available GPU memory in GB; data is split to use ≤ 1/3 of this
 
@@ -61,7 +70,7 @@ reconstruction:
 #   recon_partial_colNNNNN.tiff     — FBP reconstruction of that partial sinogram
 #
 debug:
-  enabled: false
+  enabled: true
   # Projection indices (0-based) to process for the debug images.
   # null = use 5 evenly-spaced projections (0, 281, 562, 843, 1124).
-  proj_indices: null
+  proj_indices: (0,)

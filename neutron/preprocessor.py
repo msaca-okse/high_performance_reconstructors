@@ -78,20 +78,42 @@ def load_ob(cfg: dict):
 
 
 # ---------------------------------------------------------------------------
-# Per-projection worker (runs in subprocess via Pool)
+# Beam mask
 # ---------------------------------------------------------------------------
+
+def build_beam_mask(cfg: dict) -> np.ndarray:
+    """Return a float32 mask (1 inside beam, 0 outside) for the full detector.
+
+    The beam is approximated as the largest circle that fits inside the
+    bounding rectangle defined by beam_roi (given in ImageJ x/y convention:
+    x = column, y = row).
+    """
+    n_pixels = cfg["n_pixels"]
+    roi = cfg["beam_roi"]
+    col_min, col_max = roi["x_min"], roi["x_max"]
+    row_min, row_max = roi["y_min"], roi["y_max"]
+
+    center_col = (col_min + col_max) / 2.0
+    center_row = (row_min + row_max) / 2.0
+    radius = min(col_max - col_min, row_max - row_min) / 2.0
+
+    rows, cols = np.ogrid[:n_pixels, :n_pixels]
+    mask = ((rows - center_row) ** 2 + (cols - center_col) ** 2) <= radius ** 2
+    return mask.astype(np.float32)
 
 # Module-level globals populated in each worker process by the Pool initializer
 _ob_mean = None
 _D0 = None
 _cfg = None
+_mask = None
 
 
-def _worker_init(ob_mean, D0, cfg):
-    global _ob_mean, _D0, _cfg
+def _worker_init(ob_mean, D0, cfg, mask):
+    global _ob_mean, _D0, _cfg, _mask
     _ob_mean = ob_mean
     _D0 = D0
     _cfg = cfg
+    _mask = mask
 
 
 def _process_projection(i_proj: int) -> np.ndarray:
@@ -128,7 +150,10 @@ def _process_projection(i_proj: int) -> np.ndarray:
     proj_safe = np.clip(proj, 1.0, None)
     normalized = -(np.log(proj_safe) - np.log(ob_safe) + np.log(_D0) - np.log(D))
 
-    # Spot cleaning on the full detector image
+    # Zero out pixels outside the beam circle to remove amplified edge artefacts
+    normalized *= _mask
+
+    # Spot cleaning on the masked detector image
     cleaned = iu.spotclean(normalized, size=10)
 
     # Crop to target slice range (n_slices=None means take everything from slice_offset onwards)
@@ -136,14 +161,15 @@ def _process_projection(i_proj: int) -> np.ndarray:
     return cleaned[:, slice_offset:col_end].astype(np.float32)
 
 
-def _process_projection_debug(i_proj: int, ob_mean: np.ndarray, D0: float, cfg: dict):
+def _process_projection_debug(i_proj: int, ob_mean: np.ndarray, D0: float, cfg: dict, mask: np.ndarray):
     """Process one projection and return every intermediate stage for inspection.
 
     Returns
     -------
     raw        : float32 (n_pixels, n_pixels) — averaged triplet, uncorrected counts
     normalized : float32 (n_pixels, n_pixels) — log-normalised with dose correction
-    cleaned    : float32 (n_pixels, n_pixels) — after spot cleaning (full detector)
+    masked     : float32 (n_pixels, n_pixels) — after beam mask (outside circle = 0)
+    cleaned    : float32 (n_pixels, n_pixels) — after spot cleaning
     cropped    : float32 (n_pixels, n_slices) — cropped to the target slice range
     """
     data_root = Path(cfg["data_root"])
@@ -165,24 +191,28 @@ def _process_projection_debug(i_proj: int, ob_mean: np.ndarray, D0: float, cfg: 
     proj_safe = np.clip(raw, 1.0, None)
     normalized = -(np.log(proj_safe) - np.log(ob_safe) + np.log(D0) - np.log(D))
 
-    cleaned = iu.spotclean(normalized, size=10)
+    masked = normalized * mask
+
+    cleaned = iu.spotclean(masked, size=10)
 
     col_end = None if n_slices is None else slice_offset + n_slices
     cropped = cleaned[:, slice_offset:col_end].astype(np.float32)
 
-    return raw.astype(np.float32), normalized.astype(np.float32), cleaned.astype(np.float32), cropped
+    return raw.astype(np.float32), normalized.astype(np.float32), masked.astype(np.float32), cleaned.astype(np.float32), cropped
 
 
-def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float):
+def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float, mask: np.ndarray):
     """Save intermediate pipeline images for a few projections.
 
     Processes projections sequentially (not via pool) and saves to
     results_root/debug/:
 
       ob_mean.tiff
+      beam_mask.tiff                  — circular beam mask
       proj_NNNNN_1_raw.tiff           — averaged raw detector counts
       proj_NNNNN_2_normalized.tiff    — OB-corrected, log-normalised (absorption image)
-      proj_NNNNN_3_cleaned.tiff       — after spot cleaning (full detector)
+      proj_NNNNN_3_masked.tiff        — after beam mask (outside circle zeroed)
+      proj_NNNNN_4_cleaned.tiff       — after spot cleaning
       sinogram_partial_colNNNNN.tiff  — partial sinogram at the middle target slice
       recon_partial_colNNNNN.tiff     — FBP reconstruction of that partial sinogram
     """
@@ -200,22 +230,26 @@ def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float):
 
     print(f"\n── Debug mode: saving pipeline stages to {debug_dir} ──")
 
-    # OB mean image
+    # OB mean image and beam mask
     tifffile.imwrite(str(debug_dir / "ob_mean.tiff"), ob_mean)
-    print("  Saved ob_mean.tiff")
+    tifffile.imwrite(str(debug_dir / "beam_mask.tiff"), mask)
+    print("  Saved ob_mean.tiff and beam_mask.tiff")
 
     # Per-projection stages
     cropped_list = []
     for i_proj in proj_indices:
         print(f"  Processing projection {i_proj} ...", flush=True)
         t0 = time.time()
-        raw, normalized, cleaned, cropped = _process_projection_debug(i_proj, ob_mean, D0, cfg)
+        raw, normalized, masked_img, cleaned, cropped = _process_projection_debug(
+            i_proj, ob_mean, D0, cfg, mask
+        )
         print(f"    done in {time.time() - t0:.1f}s")
         tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_1_raw.tiff"), raw)
         tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_2_normalized.tiff"), normalized)
-        tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_3_cleaned.tiff"), cleaned)
+        tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_3_masked.tiff"), masked_img)
+        tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_4_cleaned.tiff"), cleaned)
         cropped_list.append(cropped)
-        print(f"    Saved raw / normalized / cleaned for projection {i_proj}")
+        print(f"    Saved stages 1–4 for projection {i_proj}")
 
     # Partial sinogram at the middle target slice column
     slice_offset = cfg["slice_offset"]
@@ -276,6 +310,8 @@ def preprocess(cfg: dict, ob_mean: np.ndarray = None, D0: float = None) -> np.nd
     n_workers = min(cpu_count(), n_out)
     n_slices = cfg["n_slices"]  # may be None → use all columns from slice_offset
 
+    mask = build_beam_mask(cfg)
+
     if stride > 1:
         print(f"Stride={stride}: using {n_out}/{n_proj} projections.")
     print(f"Processing {n_out} projections with {n_workers} workers ...")
@@ -297,7 +333,7 @@ def preprocess(cfg: dict, ob_mean: np.ndarray = None, D0: float = None) -> np.nd
     with Pool(
         processes=n_workers,
         initializer=_worker_init,
-        initargs=(ob_mean, D0, cfg),
+        initargs=(ob_mean, D0, cfg, mask),
     ) as pool:
         for done, result in enumerate(pool.imap(_process_projection, proj_indices)):
             if use_preallocated:
@@ -363,7 +399,8 @@ if __name__ == "__main__":
     ob_mean, D0 = load_ob(cfg)
 
     if cfg.get("debug", {}).get("enabled", False):
-        save_debug_images(cfg, ob_mean, D0)
+        mask = build_beam_mask(cfg)
+        save_debug_images(cfg, ob_mean, D0, mask)
 
     sinograms = preprocess(cfg, ob_mean, D0)
     save_sinograms(cfg, sinograms)
