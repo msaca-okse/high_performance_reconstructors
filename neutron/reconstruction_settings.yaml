@@ -19,16 +19,28 @@ filenames:
 
 # ── Acquisition parameters ────────────────────────────────────────────────────
 n_projections: 1125       # number of rotation angles
-n_pixels:      2048       # detector size (both axes are square)
+n_pixels:      2048       # raw (uncropped) detector size — used only for OB pre-allocation
 n_ob:          240        # number of open-beam flat-field images
 ob_file_start: 3          # 1-based file index of the first OB FITS file
 stride:        10          # use every Nth projection (stride: 10 = 1/10 angles, good for quick tests)
 
+# Projection ROI: remove dead detector edges before any processing.
+# Coordinates are in the original uncropped pixel space.
+# All other pixel-space parameters (beam_roi, ob_monitor_region, slice_offset)
+# are also in the original pixel space; offset arithmetic is applied in code.
+# Reference values (preprocessor_NA.py): rows [50:1910], cols [90:1970].
+proj_roi:
+  row_start: 50
+  row_end:   1910
+  col_start: 90
+  col_end:   1970
+
 # Slice selection within the detector image.
-# Detector images are (n_pixels x n_pixels); the slice axis runs along columns.
-# Set n_slices to null to use all columns from slice_offset to the detector edge.
+# The slice axis runs along detector rows (vertical / z direction).
+# slice_offset and n_slices are in original (uncropped) row space.
+# Set n_slices to null to use all rows from slice_offset to proj_roi.row_end.
 n_slices:     128
-slice_offset: 1000        # column index of the first target slice
+slice_offset: 1000        # row index (original pixel space) of the first target slice
 
 # Beam-monitor region used to compute the per-image dose scalar (D) and OB dose (D0).
 ob_monitor_region:
@@ -41,9 +53,9 @@ ob_monitor_region:
 # Defined as the largest circle fitting inside the bounding rectangle of the beam.
 # Coordinates are in ImageJ convention: x = column (horizontal), y = row (vertical).
 beam_roi:
-  x_min: 256
+  x_min: 260
   x_max: 1824
-  y_min: 192
+  y_min: 194
   y_max: 1762
 
 # ── GPU memory budget ─────────────────────────────────────────────────────────
@@ -54,7 +66,16 @@ reconstruction:
   method:        fbp    # 'tv' for TV-regularised FISTA (slow, high quality) or 'fbp' (fast, for sanity checks)
   alpha:         300  # TV regularisation weight (only used when method: tv)
   n_iterations:  120
-  initial_angle: 10                    # detector rotation offset in degrees
+  initial_angle: 10    # detector rotation offset in degrees
+  # Reconstruct only a sub-region of the full FOV (speeds up recon, saves GPU memory).
+  # Indices are in the ImageGeometry pixel grid (CIL horizontal_y / horizontal_x axes).
+  # Set to null / omit to reconstruct the full FOV.
+  # Reference values from reconstructor_NA.py: y=(820,1180), x=(null,1600).
+  recon_roi:
+    horizontal_y_start: 820
+    horizontal_y_end:   1180
+    horizontal_x_start: null
+    horizontal_x_end:   1600
 
 # ── Debug mode ────────────────────────────────────────────────────────────────
 # When enabled, the preprocessor saves intermediate images to results_root/debug/
@@ -75,3 +96,27 @@ debug:
   # Projection indices (0-based) to process for the debug images.
   # null = use 5 evenly-spaced projections (0, 281, 562, 843, 1124).
   proj_indices: null
+
+# ── Ring removal ─────────────────────────────────────────────────────────────
+# Applied on the fully assembled sinogram stack after all per-projection steps.
+# Uses CIL's RingRemover (wavelet-FFT method), matching extended_data.remove_ring().
+# decNum : wavelet decomposition levels
+# wname  : wavelet order (CIL uses 'db{wname}', e.g. wname=5 → 'db5')
+# sigma  : Tikhonov regularisation strength (larger = stronger correction)
+ring_removal:
+  enabled: true
+  decNum: 4
+  wname:  5
+  sigma:  0.1
+
+# ── Geometry correction (tilt + centre of rotation) ──────────────────────────
+# Applied per-projection after spot cleaning, before slicing.
+# Parameters taken from reference CTcorrector run (preprocessor_NA.py):
+#   tilt_angle_deg : detector tilt in degrees  (reference: 0.325)
+#   cor_shift_px   : COR 'translation' variable in reference code (reference: -26);
+#                    the 3D transform applies −cor_shift_px as the x-translation,
+#                    matching  translation = [-translation, 0, 0]  in the reference.
+# Set both to 0.0 to disable (no-op, no SimpleITK needed).
+geometry_correction:
+  tilt_angle_deg: 0.325
+  cor_shift_px:   -26

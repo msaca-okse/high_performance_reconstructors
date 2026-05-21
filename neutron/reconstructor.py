@@ -113,11 +113,17 @@ def split_for_gpu(cfg: dict, data: np.ndarray) -> list:
 # ---------------------------------------------------------------------------
 
 def _build_geometry(cfg: dict, data: np.ndarray):
-    """Return (AcquisitionData, AcquisitionGeometry, ImageGeometry) for a data chunk."""
+    """Return (AcquisitionData, AcquisitionGeometry, ImageGeometry) for a data chunk.
+
+    If reconstruction.recon_roi is set, a Slicer is applied to the ImageGeometry
+    to restrict the reconstructed FOV, reducing GPU memory and runtime.
+    """
+    from cil.processors import Slicer
+
     recon_cfg = cfg["reconstruction"]
     n_slices, n_angles, n_pixels = data.shape
     initial_angle = recon_cfg["initial_angle"]
-    angles = np.linspace(0, 360, n_angles, endpoint=False, dtype=np.float32)
+    angles = np.linspace(0, 360, n_angles, endpoint=True, dtype=np.float32)
 
     ag = (
         AcquisitionGeometry.create_Parallel3D(detector_position=[0, n_pixels // 2, 0])
@@ -129,6 +135,23 @@ def _build_geometry(cfg: dict, data: np.ndarray):
     data_cil.reorder('astra')
     ag.set_angles(ag.angles, initial_angle=initial_angle)
     ig = ag.get_ImageGeometry()
+
+    recon_roi = recon_cfg.get("recon_roi")
+    if recon_roi:
+        roi_dict = {}
+        y_start = recon_roi.get("horizontal_y_start")
+        y_end   = recon_roi.get("horizontal_y_end")
+        x_start = recon_roi.get("horizontal_x_start")
+        x_end   = recon_roi.get("horizontal_x_end")
+        if y_start is not None or y_end is not None:
+            roi_dict["horizontal_y"] = (y_start, y_end, 1)
+        if x_start is not None or x_end is not None:
+            roi_dict["horizontal_x"] = (x_start, x_end, 1)
+        if roi_dict:
+            slicer = Slicer(roi_dict)
+            slicer.set_input(ig)
+            ig = slicer.get_output()
+
     return data_cil, ag, ig
 
 
