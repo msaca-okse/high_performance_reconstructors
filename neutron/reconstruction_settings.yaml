@@ -3,9 +3,9 @@
 #           -> TV-regularised FISTA reconstruction -> output TIFF slices
 
 # ── Data paths (replace PLACEHOLDER_ values with your HPC paths before running) ──
-data_root:    PLACEHOLDER_/path/to/raw/data/    # e.g. /work3/msaca/Mars_data_1/02_rawdata/
-scratch_root: PLACEHOLDER_/path/to/sinograms/   # where preprocessed sinogram TIFFs are written
-results_root: PLACEHOLDER_/path/to/results/     # where reconstruction TIFF slices are written
+data_root:    /dtu-compute/msaca/sliceA_neutron_psi    # e.g. /work3/msaca/Mars_data_1/02_rawdata/
+scratch_root: /work3/msaca/2024_BlackBeauty_PSI_SINQ_ICON   # where preprocessed sinogram TIFFs are written
+results_root: /dtu-compute/msaca/sliceA_neutron_psi     # where reconstruction TIFF slices are written
 
 # ── Data subfolders and filename patterns ─────────────────────────────────────
 subfolders:
@@ -22,6 +22,7 @@ n_projections: 1125       # number of rotation angles
 n_pixels:      2048       # detector size (both axes are square)
 n_ob:          240        # number of open-beam flat-field images
 ob_file_start: 3          # 1-based file index of the first OB FITS file
+stride:        1          # use every Nth projection (stride: 10 = 1/10 angles, good for quick tests)
 
 # Slice selection within the detector image.
 # Detector images are (n_pixels x n_pixels); the slice axis runs along columns.
@@ -40,6 +41,6 @@ gpu_size: 16              # available GPU memory in GB; data is split to use ≤
 
 # ── Reconstruction ────────────────────────────────────────────────────────────
 reconstruction:
-  alpha:         PLACEHOLDER_TV_ALPHA  # TV regularisation weight
+  alpha:         300  # TV regularisation weight
   n_iterations:  120
   initial_angle: 10                    # detector rotation offset in degrees

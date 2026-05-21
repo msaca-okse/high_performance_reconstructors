@@ -19,6 +19,7 @@ import argparse
 import gc
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -143,23 +144,45 @@ def preprocess(cfg: dict) -> np.ndarray:
 
     Returns
     -------
-    sinograms : float32 array of shape (n_projections, n_pixels, n_slices)
+    sinograms : float32 array of shape (n_out_proj, n_pixels, n_slices)
+        n_out_proj = ceil(n_projections / stride)
     """
     ob_mean, D0 = load_ob(cfg)
     n_proj = cfg["n_projections"]
-    n_workers = min(cpu_count(), n_proj)
+    stride = cfg.get("stride", 1)
+    proj_indices = list(range(0, n_proj, stride))
+    n_out = len(proj_indices)
+    n_workers = min(cpu_count(), n_out)
+    n_pixels = cfg["n_pixels"]
+    n_slices = cfg["n_slices"]
 
-    print(f"Processing {n_proj} projections with {n_workers} workers ...")
+    if stride > 1:
+        print(f"Stride={stride}: using {n_out}/{n_proj} projections.")
+    print(f"Processing {n_out} projections with {n_workers} workers ...")
+
+    # Pre-allocate output so we never hold all results in a list simultaneously
+    sinograms = np.empty((n_out, n_pixels, n_slices), dtype=np.float32)
+    log_every = max(1, n_out // 20)  # print ~20 progress updates
+    t0 = time.time()
+
     with Pool(
         processes=n_workers,
         initializer=_worker_init,
         initargs=(ob_mean, D0, cfg),
     ) as pool:
-        results = pool.map(_process_projection, range(n_proj))
+        for done, result in enumerate(pool.imap(_process_projection, proj_indices)):
+            sinograms[done] = result
+            if (done + 1) % log_every == 0 or done + 1 == n_out:
+                elapsed = time.time() - t0
+                rate = (done + 1) / elapsed
+                eta = (n_out - done - 1) / rate
+                print(
+                    f"  [{done + 1:>{len(str(n_out))}}/{n_out}] "
+                    f"{elapsed:6.0f}s elapsed, ETA {eta:5.0f}s  ({rate:.2f} proj/s)",
+                    flush=True,
+                )
 
-    # Stack to (n_proj, n_pixels, n_slices)
-    sinograms = np.stack(results, axis=0)
-    del results, ob_mean
+    del ob_mean
     gc.collect()
     return sinograms
 
