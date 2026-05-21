@@ -207,14 +207,15 @@ def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float, mask: np.ndarra
     Processes projections sequentially (not via pool) and saves to
     results_root/debug/:
 
-      ob_mean.tiff
+      ob_mean.tiff                    — averaged open-beam image
       beam_mask.tiff                  — circular beam mask
       proj_NNNNN_1_raw.tiff           — averaged raw detector counts
       proj_NNNNN_2_normalized.tiff    — OB-corrected, log-normalised (absorption image)
       proj_NNNNN_3_masked.tiff        — after beam mask (outside circle zeroed)
       proj_NNNNN_4_cleaned.tiff       — after spot cleaning
-      sinogram_partial_colNNNNN.tiff  — partial sinogram at the middle target slice
-      recon_partial_colNNNNN.tiff     — FBP reconstruction of that partial sinogram
+
+    A sinogram TIFF from the full pipeline run is copied to the debug folder
+    by the caller after preprocessing completes.
     """
     debug_cfg = cfg.get("debug", {})
     n_proj = cfg["n_projections"]
@@ -236,11 +237,10 @@ def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float, mask: np.ndarra
     print("  Saved ob_mean.tiff and beam_mask.tiff")
 
     # Per-projection stages
-    cropped_list = []
     for i_proj in proj_indices:
         print(f"  Processing projection {i_proj} ...", flush=True)
         t0 = time.time()
-        raw, normalized, masked_img, cleaned, cropped = _process_projection_debug(
+        raw, normalized, masked_img, cleaned, _ = _process_projection_debug(
             i_proj, ob_mean, D0, cfg, mask
         )
         print(f"    done in {time.time() - t0:.1f}s")
@@ -248,48 +248,9 @@ def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float, mask: np.ndarra
         tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_2_normalized.tiff"), normalized)
         tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_3_masked.tiff"), masked_img)
         tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_4_cleaned.tiff"), cleaned)
-        cropped_list.append(cropped)
         print(f"    Saved stages 1–4 for projection {i_proj}")
 
-    # Partial sinogram at the middle target slice column
-    slice_offset = cfg["slice_offset"]
-    mini_sino = np.stack(cropped_list, axis=0)  # (n_debug, n_pixels, n_cols)
-    mid = mini_sino.shape[2] // 2
-    sino_2d = mini_sino[:, :, mid]              # (n_debug, n_pixels)
-    sino_col = slice_offset + mid
-    sino_path = debug_dir / f"sinogram_partial_col{sino_col:05d}.tiff"
-    tifffile.imwrite(str(sino_path), sino_2d)
-    print(f"  Saved partial sinogram ({len(proj_indices)} angles, col {sino_col}) → {sino_path.name}")
-
-    # 2D FBP reconstruction of the partial sinogram
-    # NOTE: with only a few projection angles the reconstruction will be
-    # under-sampled, but it is enough to confirm geometry and value range.
-    try:
-        from cil.framework import AcquisitionData, AcquisitionGeometry
-        from cil.plugins.astra import FBP
-
-        n_angles, n_pixels = sino_2d.shape
-        initial_angle = cfg["reconstruction"]["initial_angle"]
-        angles = np.linspace(0, 360, n_angles, endpoint=False, dtype=np.float32)
-
-        ag2d = (
-            AcquisitionGeometry.create_Parallel2D(detector_position=[0, n_pixels // 2])
-            .set_angles(angles)
-            .set_panel(n_pixels, pixel_size=1)
-            .set_labels(("angle", "horizontal"))
-        )
-        data_cil = AcquisitionData(sino_2d, geometry=ag2d)
-        data_cil.reorder("astra")
-        ag2d.set_angles(ag2d.angles, initial_angle=initial_angle)
-        ig2d = ag2d.get_ImageGeometry()
-        recon = FBP(ig2d, ag2d, "gpu")(data_cil).as_array().astype(np.float32)
-        recon_path = debug_dir / f"recon_partial_col{sino_col:05d}.tiff"
-        tifffile.imwrite(str(recon_path), recon)
-        print(f"  Saved partial FBP reconstruction → {recon_path.name}")
-    except Exception as e:
-        print(f"  FBP reconstruction skipped: {e}")
-
-    print(f"── Debug output written to {debug_dir} ──\n")
+    print(f"── Debug images written. Sinogram will be copied after full pipeline completes. ──\n")
 
 def preprocess(cfg: dict, ob_mean: np.ndarray = None, D0: float = None) -> np.ndarray:
     """Run the full preprocessing pipeline.
@@ -404,3 +365,16 @@ if __name__ == "__main__":
 
     sinograms = preprocess(cfg, ob_mean, D0)
     save_sinograms(cfg, sinograms)
+
+    # Copy one sinogram into the debug folder so the full pipeline output
+    # can be inspected alongside the per-projection debug images.
+    if cfg.get("debug", {}).get("enabled", False):
+        import shutil
+        slice_offset = cfg["slice_offset"]
+        n_slices = sinograms.shape[2]
+        mid_col = slice_offset + n_slices // 2
+        src = Path(cfg["scratch_root"]) / f"sinogram_{mid_col:05d}.tiff"
+        dst = Path(cfg["results_root"]) / "debug" / f"sinogram_col{mid_col:05d}.tiff"
+        if src.exists():
+            shutil.copy2(src, dst)
+            print(f"Debug: copied sinogram for col {mid_col} to {dst}")

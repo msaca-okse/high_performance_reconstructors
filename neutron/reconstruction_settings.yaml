@@ -58,19 +58,20 @@ reconstruction:
 
 # ── Debug mode ────────────────────────────────────────────────────────────────
 # When enabled, the preprocessor saves intermediate images to results_root/debug/
-# before running the main pipeline. Useful for checking that each processing
-# step looks correct before committing to a full run.
+# for a few representative projections, then runs the full pipeline normally.
+# Open TIFFs with ImageJ / napari / fiji.
 #
-# Saved files (all TIFFs, open with ImageJ / napari / fiji etc.):
-#   ob_mean.tiff                    — averaged open-beam image
-#   proj_NNNNN_1_raw.tiff           — raw averaged detector image
-#   proj_NNNNN_2_normalized.tiff    — after OB correction + log-normalisation
-#   proj_NNNNN_3_cleaned.tiff       — after spot cleaning (full detector image)
-#   sinogram_partial_colNNNNN.tiff  — partial sinogram at the middle target slice
-#   recon_partial_colNNNNN.tiff     — FBP reconstruction of that partial sinogram
+# Saved files:
+#   ob_mean.tiff                  — averaged open-beam image
+#   beam_mask.tiff                — circular beam mask
+#   proj_NNNNN_1_raw.tiff         — raw averaged detector image
+#   proj_NNNNN_2_normalized.tiff  — after OB correction + log-normalisation
+#   proj_NNNNN_3_masked.tiff      — after beam mask (outside circle zeroed)
+#   proj_NNNNN_4_cleaned.tiff     — after spot cleaning
+#   sinogram_colNNNNN.tiff        — one sinogram from the full pipeline (middle target slice)
 #
 debug:
   enabled: true
   # Projection indices (0-based) to process for the debug images.
   # null = use 5 evenly-spaced projections (0, 281, 562, 843, 1124).
-  proj_indices: (0,)
+  proj_indices: null
