@@ -131,8 +131,9 @@ def _process_projection(i_proj: int) -> np.ndarray:
     # Spot cleaning on the full detector image
     cleaned = iu.spotclean(normalized, size=10)
 
-    # Crop to target slice range
-    return cleaned[:, slice_offset: slice_offset + n_slices].astype(np.float32)
+    # Crop to target slice range (n_slices=None means take everything from slice_offset onwards)
+    col_end = None if n_slices is None else slice_offset + n_slices
+    return cleaned[:, slice_offset:col_end].astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -153,15 +154,23 @@ def preprocess(cfg: dict) -> np.ndarray:
     proj_indices = list(range(0, n_proj, stride))
     n_out = len(proj_indices)
     n_workers = min(cpu_count(), n_out)
-    n_pixels = cfg["n_pixels"]
-    n_slices = cfg["n_slices"]
+    n_slices = cfg["n_slices"]  # may be None → use all columns from slice_offset
 
     if stride > 1:
         print(f"Stride={stride}: using {n_out}/{n_proj} projections.")
     print(f"Processing {n_out} projections with {n_workers} workers ...")
 
-    # Pre-allocate output so we never hold all results in a list simultaneously
-    sinograms = np.empty((n_out, n_pixels, n_slices), dtype=np.float32)
+    # Pre-allocate output. When n_slices is None we don't know the column count until
+    # the first result arrives, so we collect results into a list in that case.
+    n_slices = cfg["n_slices"]
+    if n_slices is not None:
+        n_pixels = cfg["n_pixels"]
+        sinograms = np.empty((n_out, n_pixels, n_slices), dtype=np.float32)
+        use_preallocated = True
+    else:
+        sinograms_list = []
+        use_preallocated = False
+
     log_every = max(1, n_out // 20)  # print ~20 progress updates
     t0 = time.time()
 
@@ -171,7 +180,10 @@ def preprocess(cfg: dict) -> np.ndarray:
         initargs=(ob_mean, D0, cfg),
     ) as pool:
         for done, result in enumerate(pool.imap(_process_projection, proj_indices)):
-            sinograms[done] = result
+            if use_preallocated:
+                sinograms[done] = result
+            else:
+                sinograms_list.append(result)
             if (done + 1) % log_every == 0 or done + 1 == n_out:
                 elapsed = time.time() - t0
                 rate = (done + 1) / elapsed
@@ -181,6 +193,10 @@ def preprocess(cfg: dict) -> np.ndarray:
                     f"{elapsed:6.0f}s elapsed, ETA {eta:5.0f}s  ({rate:.2f} proj/s)",
                     flush=True,
                 )
+
+    if not use_preallocated:
+        sinograms = np.stack(sinograms_list, axis=0)
+        del sinograms_list
 
     del ob_mean
     gc.collect()

@@ -26,7 +26,8 @@ stride:        1          # use every Nth projection (stride: 10 = 1/10 angles, 
 
 # Slice selection within the detector image.
 # Detector images are (n_pixels x n_pixels); the slice axis runs along columns.
-n_slices:     64
+# Set n_slices to null to use all columns from slice_offset to the detector edge.
+n_slices:     null
 slice_offset: 1000        # column index of the first target slice
 
 # Beam-monitor region used to compute the per-image dose scalar (D) and OB dose (D0).
@@ -41,6 +42,7 @@ gpu_size: 16              # available GPU memory in GB; data is split to use ≤
 
 # ── Reconstruction ────────────────────────────────────────────────────────────
 reconstruction:
-  alpha:         300  # TV regularisation weight
+  method:        tv    # 'tv' for TV-regularised FISTA (slow, high quality) or 'fbp' (fast, for sanity checks)
+  alpha:         300  # TV regularisation weight (only used when method: tv)
   n_iterations:  120
   initial_angle: 10                    # detector rotation offset in degrees

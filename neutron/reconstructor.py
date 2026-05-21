@@ -20,6 +20,7 @@ import yaml
 from cil.framework import AcquisitionData, AcquisitionGeometry
 from cil.optimisation.algorithms import FISTA
 from cil.optimisation.functions import LeastSquares
+from cil.plugins.astra import FBP
 from cil.plugins.astra.operators import ProjectionOperator
 from cil.plugins.ccpi_regularisation.functions import FGP_TV
 
@@ -83,23 +84,11 @@ def split_for_gpu(cfg: dict, data: np.ndarray) -> list:
 # Reconstruction
 # ---------------------------------------------------------------------------
 
-def reconstruct_tv_batch(cfg: dict, data: np.ndarray) -> np.ndarray:
-    """Reconstruct one chunk with TV-regularised FISTA (GPU).
-
-    Parameters
-    ----------
-    data : float32 array of shape (n_slices, n_angles, n_pixels)
-
-    Returns
-    -------
-    recon : float32 array of shape (n_slices, n_pixels, n_pixels)
-    """
+def _build_geometry(cfg: dict, data: np.ndarray):
+    """Return (AcquisitionData, AcquisitionGeometry, ImageGeometry) for a data chunk."""
     recon_cfg = cfg["reconstruction"]
     n_slices, n_angles, n_pixels = data.shape
-    alpha = recon_cfg["alpha"]
-    n_iter = recon_cfg["n_iterations"]
     initial_angle = recon_cfg["initial_angle"]
-
     angles = np.linspace(0, 360, n_angles, endpoint=False, dtype=np.float32)
 
     ag = (
@@ -111,8 +100,42 @@ def reconstruct_tv_batch(cfg: dict, data: np.ndarray) -> np.ndarray:
     data_cil = AcquisitionData(data, geometry=ag)
     data_cil.reorder('astra')
     ag.set_angles(ag.angles, initial_angle=initial_angle)
-
     ig = ag.get_ImageGeometry()
+    return data_cil, ag, ig
+
+
+def reconstruct_fbp_batch(cfg: dict, data: np.ndarray) -> np.ndarray:
+    """Fast FBP reconstruction — use for sanity checks before committing to TV.
+
+    Parameters
+    ----------
+    data : float32 array of shape (n_slices, n_angles, n_pixels)
+
+    Returns
+    -------
+    recon : float32 array of shape (n_slices, n_pixels, n_pixels)
+    """
+    data_cil, ag, ig = _build_geometry(cfg, data)
+    fbp = FBP(ig, ag, device='gpu')
+    return fbp(data_cil).as_array().astype(np.float32)
+
+
+def reconstruct_tv_batch(cfg: dict, data: np.ndarray) -> np.ndarray:
+    """TV-regularised FISTA reconstruction (GPU).
+
+    Parameters
+    ----------
+    data : float32 array of shape (n_slices, n_angles, n_pixels)
+
+    Returns
+    -------
+    recon : float32 array of shape (n_slices, n_pixels, n_pixels)
+    """
+    recon_cfg = cfg["reconstruction"]
+    alpha = recon_cfg["alpha"]
+    n_iter = recon_cfg["n_iterations"]
+
+    data_cil, ag, ig = _build_geometry(cfg, data)
     A = ProjectionOperator(ig, ag, 'gpu')
     F = LeastSquares(A, data_cil)
     G = alpha * FGP_TV(device='gpu', nonnegativity=True)
@@ -158,6 +181,13 @@ if __name__ == "__main__":
 
     cfg = load_config(args.config)
 
+    method = cfg["reconstruction"].get("method", "tv").lower()
+    if method not in ("tv", "fbp"):
+        raise ValueError(f"reconstruction.method must be 'tv' or 'fbp', got '{method}'")
+    print(f"Reconstruction method: {method.upper()}")
+
+    reconstruct_batch = reconstruct_fbp_batch if method == "fbp" else reconstruct_tv_batch
+
     data = load_sinograms(cfg)
     chunks = split_for_gpu(cfg, data)
     del data
@@ -166,7 +196,7 @@ if __name__ == "__main__":
     results = []
     for i, chunk in enumerate(chunks):
         print(f"\nReconstructing chunk {i + 1}/{len(chunks)} ...")
-        results.append(reconstruct_tv_batch(cfg, chunk))
+        results.append(reconstruct_batch(cfg, chunk))
 
     volume = np.concatenate(results, axis=0)
     del results, chunks
