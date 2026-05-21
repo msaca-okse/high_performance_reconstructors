@@ -1,0 +1,15 @@
+# HPC job logs
+logs/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Large output / data files (not tracked in git)
+*.ome.zarr
+*.npy

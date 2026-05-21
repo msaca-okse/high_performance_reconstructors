@@ -1,4 +1,0 @@
-Loaded module: cuda/12.2
-/zhome/71/c/146676/miniconda3/envs/cil/lib/python3.11/site-packages/dxchange/__init__.py:63: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
-  import pkg_resources
-/zhome/71/c/146676/.lsbatch/1759337614.26339916.shell: line 13: 3436995 Killed                  python preprocessor.py --config reconstruction_settings_1.yaml

@@ -6,8 +6,11 @@ import time
 import numpy as np
 import tifffile as tiff
 from pathlib import Path
-from preprocessor import save_volume_as_tiffs
 import gc
+
+# Ensure sibling modules in x_ray/ are importable when run from repo root
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from preprocessor import save_volume_as_tiffs
 
 from multiprocessing import Pool, cpu_count
 from cil.framework import AcquisitionGeometry, AcquisitionData, ImageGeometry

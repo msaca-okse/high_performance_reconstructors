@@ -1,6 +1,9 @@
 
 
+import sys, os
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from reconstructor import load_volume_from_tiffs
 
 

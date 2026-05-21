@@ -1,6 +1,0 @@
-Loaded module: cuda/12.2
-/zhome/71/c/146676/.lsbatch/1759334408.26339531.shell: line 12: /zhome/71/c/146676/conda/bin/activate: No such file or directory
-Traceback (most recent call last):
-  File "/zhome/71/c/146676/reconstructors_for_hpc/preprocessor.py", line 5, in <module>
-    from dxchange.reader import read_edf
-ModuleNotFoundError: No module named 'dxchange'

@@ -1,0 +1,45 @@
+# Neutron CT reconstruction settings
+# Pipeline: raw FITS -> OB correction + log-normalisation + spot cleaning -> sinogram TIFFs
+#           -> TV-regularised FISTA reconstruction -> output TIFF slices
+
+# ── Data paths (replace PLACEHOLDER_ values with your HPC paths before running) ──
+data_root:    PLACEHOLDER_/path/to/raw/data/    # e.g. /work3/msaca/Mars_data_1/02_rawdata/
+scratch_root: PLACEHOLDER_/path/to/sinograms/   # where preprocessed sinogram TIFFs are written
+results_root: PLACEHOLDER_/path/to/results/     # where reconstruction TIFF slices are written
+
+# ── Data subfolders and filename patterns ─────────────────────────────────────
+subfolders:
+  projections: ct_3x1126_60s/
+  ob:          OB2_DC2/
+
+filenames:
+  proj_prefix: ct_3x1126_60s_
+  ob_prefix:   OB2_DC2_
+  suffix:      .fits
+
+# ── Acquisition parameters ────────────────────────────────────────────────────
+n_projections: 1125       # number of rotation angles
+n_pixels:      2048       # detector size (both axes are square)
+n_ob:          240        # number of open-beam flat-field images
+ob_file_start: 3          # 1-based file index of the first OB FITS file
+
+# Slice selection within the detector image.
+# Detector images are (n_pixels x n_pixels); the slice axis runs along columns.
+n_slices:     64
+slice_offset: 1000        # column index of the first target slice
+
+# Beam-monitor region used to compute the per-image dose scalar (D) and OB dose (D0).
+ob_monitor_region:
+  row_start: 1061
+  row_end:   1274
+  col_start: 1570
+  col_end:   1714
+
+# ── GPU memory budget ─────────────────────────────────────────────────────────
+gpu_size: 16              # available GPU memory in GB; data is split to use ≤ 1/3 of this
+
+# ── Reconstruction ────────────────────────────────────────────────────────────
+reconstruction:
+  alpha:         PLACEHOLDER_TV_ALPHA  # TV regularisation weight
+  n_iterations:  120
+  initial_angle: 10                    # detector rotation offset in degrees
