@@ -136,19 +136,139 @@ def _process_projection(i_proj: int) -> np.ndarray:
     return cleaned[:, slice_offset:col_end].astype(np.float32)
 
 
-# ---------------------------------------------------------------------------
-# Preprocessing orchestration
-# ---------------------------------------------------------------------------
+def _process_projection_debug(i_proj: int, ob_mean: np.ndarray, D0: float, cfg: dict):
+    """Process one projection and return every intermediate stage for inspection.
 
-def preprocess(cfg: dict) -> np.ndarray:
+    Returns
+    -------
+    raw        : float32 (n_pixels, n_pixels) — averaged triplet, uncorrected counts
+    normalized : float32 (n_pixels, n_pixels) — log-normalised with dose correction
+    cleaned    : float32 (n_pixels, n_pixels) — after spot cleaning (full detector)
+    cropped    : float32 (n_pixels, n_slices) — cropped to the target slice range
+    """
+    data_root = Path(cfg["data_root"])
+    proj_dir = data_root / cfg["subfolders"]["projections"]
+    prefix = cfg["filenames"]["proj_prefix"]
+    suffix = cfg["filenames"]["suffix"]
+    r = cfg["ob_monitor_region"]
+    slice_offset = cfg["slice_offset"]
+    n_slices = cfg["n_slices"]
+
+    i_file = i_proj + 1
+    def _read(k):
+        return fits.open(proj_dir / f"{prefix}{k:05d}{suffix}")[0].data.astype(np.float64)
+
+    raw = (_read(3 * i_file - 2) + _read(3 * i_file - 1) + _read(3 * i_file)) / 3.0
+    D = float(np.median(raw[r["row_start"]:r["row_end"], r["col_start"]:r["col_end"]]))
+
+    ob_safe = np.clip(ob_mean.astype(np.float64), 1.0, None)
+    proj_safe = np.clip(raw, 1.0, None)
+    normalized = -(np.log(proj_safe) - np.log(ob_safe) + np.log(D0) - np.log(D))
+
+    cleaned = iu.spotclean(normalized, size=10)
+
+    col_end = None if n_slices is None else slice_offset + n_slices
+    cropped = cleaned[:, slice_offset:col_end].astype(np.float32)
+
+    return raw.astype(np.float32), normalized.astype(np.float32), cleaned.astype(np.float32), cropped
+
+
+def save_debug_images(cfg: dict, ob_mean: np.ndarray, D0: float):
+    """Save intermediate pipeline images for a few projections.
+
+    Processes projections sequentially (not via pool) and saves to
+    results_root/debug/:
+
+      ob_mean.tiff
+      proj_NNNNN_1_raw.tiff           — averaged raw detector counts
+      proj_NNNNN_2_normalized.tiff    — OB-corrected, log-normalised (absorption image)
+      proj_NNNNN_3_cleaned.tiff       — after spot cleaning (full detector)
+      sinogram_partial_colNNNNN.tiff  — partial sinogram at the middle target slice
+      recon_partial_colNNNNN.tiff     — FBP reconstruction of that partial sinogram
+    """
+    debug_cfg = cfg.get("debug", {})
+    n_proj = cfg["n_projections"]
+
+    # Default: 5 evenly-spaced projection indices
+    proj_indices = debug_cfg.get("proj_indices") or [
+        int(n_proj * i / 4) for i in range(5)
+    ]
+
+    results_root = Path(cfg["results_root"])
+    debug_dir = results_root / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n── Debug mode: saving pipeline stages to {debug_dir} ──")
+
+    # OB mean image
+    tifffile.imwrite(str(debug_dir / "ob_mean.tiff"), ob_mean)
+    print("  Saved ob_mean.tiff")
+
+    # Per-projection stages
+    cropped_list = []
+    for i_proj in proj_indices:
+        print(f"  Processing projection {i_proj} ...", flush=True)
+        t0 = time.time()
+        raw, normalized, cleaned, cropped = _process_projection_debug(i_proj, ob_mean, D0, cfg)
+        print(f"    done in {time.time() - t0:.1f}s")
+        tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_1_raw.tiff"), raw)
+        tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_2_normalized.tiff"), normalized)
+        tifffile.imwrite(str(debug_dir / f"proj_{i_proj:05d}_3_cleaned.tiff"), cleaned)
+        cropped_list.append(cropped)
+        print(f"    Saved raw / normalized / cleaned for projection {i_proj}")
+
+    # Partial sinogram at the middle target slice column
+    slice_offset = cfg["slice_offset"]
+    mini_sino = np.stack(cropped_list, axis=0)  # (n_debug, n_pixels, n_cols)
+    mid = mini_sino.shape[2] // 2
+    sino_2d = mini_sino[:, :, mid]              # (n_debug, n_pixels)
+    sino_col = slice_offset + mid
+    sino_path = debug_dir / f"sinogram_partial_col{sino_col:05d}.tiff"
+    tifffile.imwrite(str(sino_path), sino_2d)
+    print(f"  Saved partial sinogram ({len(proj_indices)} angles, col {sino_col}) → {sino_path.name}")
+
+    # 2D FBP reconstruction of the partial sinogram
+    # NOTE: with only a few projection angles the reconstruction will be
+    # under-sampled, but it is enough to confirm geometry and value range.
+    try:
+        from cil.framework import AcquisitionData, AcquisitionGeometry
+        from cil.plugins.astra import FBP
+
+        n_angles, n_pixels = sino_2d.shape
+        initial_angle = cfg["reconstruction"]["initial_angle"]
+        angles = np.linspace(0, 360, n_angles, endpoint=False, dtype=np.float32)
+
+        ag2d = (
+            AcquisitionGeometry.create_Parallel2D(detector_position=[0, n_pixels // 2])
+            .set_angles(angles)
+            .set_panel(n_pixels, pixel_size=1)
+            .set_labels(("angle", "horizontal"))
+        )
+        data_cil = AcquisitionData(sino_2d, geometry=ag2d)
+        data_cil.reorder("astra")
+        ag2d.set_angles(ag2d.angles, initial_angle=initial_angle)
+        ig2d = ag2d.get_ImageGeometry()
+        recon = FBP(ig2d, ag2d, "gpu")(data_cil).as_array().astype(np.float32)
+        recon_path = debug_dir / f"recon_partial_col{sino_col:05d}.tiff"
+        tifffile.imwrite(str(recon_path), recon)
+        print(f"  Saved partial FBP reconstruction → {recon_path.name}")
+    except Exception as e:
+        print(f"  FBP reconstruction skipped: {e}")
+
+    print(f"── Debug output written to {debug_dir} ──\n")
+
+def preprocess(cfg: dict, ob_mean: np.ndarray = None, D0: float = None) -> np.ndarray:
     """Run the full preprocessing pipeline.
+
+    ob_mean and D0 may be passed in if they were already computed (e.g. during
+    a debug run) to avoid loading the OB files twice.
 
     Returns
     -------
     sinograms : float32 array of shape (n_out_proj, n_pixels, n_slices)
         n_out_proj = ceil(n_projections / stride)
     """
-    ob_mean, D0 = load_ob(cfg)
+    ob_mean, D0 = load_ob(cfg) if ob_mean is None else (ob_mean, D0)
     n_proj = cfg["n_projections"]
     stride = cfg.get("stride", 1)
     proj_indices = list(range(0, n_proj, stride))
@@ -238,5 +358,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    sinograms = preprocess(cfg)
+
+    # Load OB once — reused by both debug output and the main preprocessing pool
+    ob_mean, D0 = load_ob(cfg)
+
+    if cfg.get("debug", {}).get("enabled", False):
+        save_debug_images(cfg, ob_mean, D0)
+
+    sinograms = preprocess(cfg, ob_mean, D0)
     save_sinograms(cfg, sinograms)

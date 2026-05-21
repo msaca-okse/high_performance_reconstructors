@@ -5,7 +5,7 @@
 # ── Data paths (replace PLACEHOLDER_ values with your HPC paths before running) ──
 data_root:    /dtu-compute/msaca/sliceA_neutron_psi    # e.g. /work3/msaca/Mars_data_1/02_rawdata/
 scratch_root: /work3/msaca/2024_BlackBeauty_PSI_SINQ_ICON   # where preprocessed sinogram TIFFs are written
-results_root: /dtu-compute/msaca/sliceA_neutron_psi     # where reconstruction TIFF slices are written
+results_root: /dtu-compute/msaca/sliceA_neutron_psi/reconstructions/fbp     # where reconstruction TIFF slices are written
 
 # ── Data subfolders and filename patterns ─────────────────────────────────────
 subfolders:
@@ -22,12 +22,12 @@ n_projections: 1125       # number of rotation angles
 n_pixels:      2048       # detector size (both axes are square)
 n_ob:          240        # number of open-beam flat-field images
 ob_file_start: 3          # 1-based file index of the first OB FITS file
-stride:        1          # use every Nth projection (stride: 10 = 1/10 angles, good for quick tests)
+stride:        10          # use every Nth projection (stride: 10 = 1/10 angles, good for quick tests)
 
 # Slice selection within the detector image.
 # Detector images are (n_pixels x n_pixels); the slice axis runs along columns.
 # Set n_slices to null to use all columns from slice_offset to the detector edge.
-n_slices:     null
+n_slices:     128
 slice_offset: 1000        # column index of the first target slice
 
 # Beam-monitor region used to compute the per-image dose scalar (D) and OB dose (D0).
@@ -42,7 +42,26 @@ gpu_size: 16              # available GPU memory in GB; data is split to use ≤
 
 # ── Reconstruction ────────────────────────────────────────────────────────────
 reconstruction:
-  method:        tv    # 'tv' for TV-regularised FISTA (slow, high quality) or 'fbp' (fast, for sanity checks)
+  method:        fbp    # 'tv' for TV-regularised FISTA (slow, high quality) or 'fbp' (fast, for sanity checks)
   alpha:         300  # TV regularisation weight (only used when method: tv)
   n_iterations:  120
   initial_angle: 10                    # detector rotation offset in degrees
+
+# ── Debug mode ────────────────────────────────────────────────────────────────
+# When enabled, the preprocessor saves intermediate images to results_root/debug/
+# before running the main pipeline. Useful for checking that each processing
+# step looks correct before committing to a full run.
+#
+# Saved files (all TIFFs, open with ImageJ / napari / fiji etc.):
+#   ob_mean.tiff                    — averaged open-beam image
+#   proj_NNNNN_1_raw.tiff           — raw averaged detector image
+#   proj_NNNNN_2_normalized.tiff    — after OB correction + log-normalisation
+#   proj_NNNNN_3_cleaned.tiff       — after spot cleaning (full detector image)
+#   sinogram_partial_colNNNNN.tiff  — partial sinogram at the middle target slice
+#   recon_partial_colNNNNN.tiff     — FBP reconstruction of that partial sinogram
+#
+debug:
+  enabled: false
+  # Projection indices (0-based) to process for the debug images.
+  # null = use 5 evenly-spaced projections (0, 281, 562, 843, 1124).
+  proj_indices: null
