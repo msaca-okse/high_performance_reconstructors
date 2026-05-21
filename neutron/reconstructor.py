@@ -43,16 +43,44 @@ def _load_sino(path: Path) -> np.ndarray:
 
 
 def load_sinograms(cfg: dict) -> np.ndarray:
-    """Load all sinogram TIFFs from scratch_root.
+    """Load sinogram TIFFs from scratch_root that match the configured slice range.
+
+    If n_slices is set in the config, only the sinograms for columns
+    [slice_offset, slice_offset + n_slices) are loaded. If n_slices is null,
+    all sinograms from slice_offset onwards are loaded.
 
     Returns
     -------
     volume : float32 array of shape (n_slices, n_angles, n_pixels)
     """
     scratch_root = Path(cfg["scratch_root"])
-    sino_files = sorted(scratch_root.glob("sinogram_*.tiff"))
-    if not sino_files:
-        raise FileNotFoundError(f"No sinogram_*.tiff files found in {scratch_root}")
+    slice_offset = cfg["slice_offset"]
+    n_slices = cfg["n_slices"]  # may be None
+
+    if n_slices is not None:
+        # Build explicit list of expected filenames
+        sino_files = [
+            scratch_root / f"sinogram_{slice_offset + j:05d}.tiff"
+            for j in range(n_slices)
+        ]
+        missing = [f for f in sino_files if not f.exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"{len(missing)} sinogram file(s) not found in {scratch_root}, "
+                f"e.g. {missing[0].name}"
+            )
+    else:
+        # Load all sinograms from slice_offset onwards
+        all_files = sorted(scratch_root.glob("sinogram_*.tiff"))
+        sino_files = [
+            f for f in all_files
+            if int(f.stem.split("_")[1]) >= slice_offset
+        ]
+        if not sino_files:
+            raise FileNotFoundError(
+                f"No sinogram_*.tiff files found in {scratch_root} "
+                f"with index >= {slice_offset}"
+            )
 
     n_workers = cpu_count()
     print(f"Loading {len(sino_files)} sinograms from {scratch_root} with {n_workers} workers ...")
