@@ -221,24 +221,13 @@ def weightedaverageimage(imgs,size) :
     
     return img
 
-def sigmaclipaverageimage(imgs,fact=2) :
-    dims=imgs.shape
-    img = np.zeros(dims[0:2])
-    for y in np.arange(dims[1]) :
-        for x in np.arange(dims[0]) :
-            c,upp,low=stats.sigmaclip(imgs[x,y,:],fact,fact)
-            if (c.size!=0) :
-                img[x,y]=c.mean()
-            else :
-                img[x,y]=img[x-1,y]
-            
-    return img
+
 
 def periodicSpotPattern(dims, width, distance, amplitude) :
     x,y = np.meshgrid(range(0,dims[1]),range(0,dims[0]))
     dots=amplitude*(np.mod(x,distance)==0)*(np.mod(y,distance)==0)
     fdots=ndimage.filters.gaussian_filter(dots,width)
-    m=np.max(fdots);
+    m=np.max(fdots)
     fdots=amplitude/m*fdots
     
     return fdots    
@@ -249,113 +238,3 @@ def SNR(data,reference) :
     m=np.mean(reference)
     
     return s
-
-def normalizeImage(img, ob, dc, neglog = True, doseROI = []) :
-    
-    if (len(ob.shape)==2) :
-        ob = ob - dc
-        
-        ob[ob<1] = 1
-    
-        if len(doseROI) == 4 :
-            D0 = ob[doseROI[0]:doseROI[2],doseROI[1]:doseROI[3]].mean()
-        else :
-            D0 = 1
-
-        if len(img.shape) == 2 :
-            normed = img.copy() - dc
-            normed[normed<1]=1
-            
-            if len(doseROI) == 4 :
-                D = normed[doseROI[0]:doseROI[2],doseROI[1]:doseROI[3]].mean()
-            else :
-                D = 1
-
-            if neglog :
-                normed = -np.log((D0/D)*normed/ob)
-            else :
-                normed = (D0/D)*normed/ob
-
-        else : 
-            normed = np.zeros(img.shape)
-            
-            for idx in tqdm(range(normed.shape[0])) :
-                tmp = img[idx].copy() - dc
-                tmp[tmp<1]=1
-                                
-                if len(doseROI) == 4 :
-                    D = tmp[doseROI[0]:doseROI[2],doseROI[1]:doseROI[3]].mean()
-                else :
-                    D = 1
-
-                if neglog :
-                    normed[idx] = -np.log(D0/D*tmp/ob)
-                else :
-                    normed[idx] = D0/D*tmp/ob
-    else :        
-        if (ob.shape[0] != normed.shape[0]) :
-            print("Shape miss match, not same number of images in ob and img")
-            return normed
-        else :
-            normed = np.zeros(img.shape)
-            for idx in tqdm(range(normed.shape[0])) :
-                tmp        = img[idx].copy() - dc
-                tmp[tmp<1] = 1
-                
-                tmpob          = ob[idx] - dc
-                tmpob[tmpob<1] = 1
-
-                if len(doseROI) == 4 :
-                    D  = tmp[doseROI[0]:doseROI[2],doseROI[1]:doseROI[3]].mean()
-                    D0 = tmpob[doseROI[0]:doseROI[2],doseROI[1]:doseROI[3]].mean()
-                else :
-                    D  = 1
-                    D0 = 1
-
-                if neglog :
-                    normed[idx] = -np.log(D0/D*tmp/tmpob)
-                else :
-                    normed[idx] = D0/D*tmp/tmpob
-
-    return normed
-
-def imshowPercentile(img,ax,factor) :
-    m = img.mean()
-    s = img.std()
-    ax.imshow(img,vmin = m-s*factor, vmax = m+s*factor)
-
-def makeMovie(img,fname='movie.mp4',size=[8,6],dpi=200, limits=None, title='Frame {0}',frameValues=[],fps=30) :
-    fig = plt.figure()
-    fig.set_size_inches(8, 6, True)
-    i=0
-    
-    if limits is not None :
-        vmin = limits[0]
-        vmax = limits[1]
-    else:
-        vmin = 0
-        vmax = 3
-
-    im = plt.imshow(img[0], animated=True,vmin=vmin,vmax=vmax)
-    plt.tight_layout()
-
-    def updatefig(*args):
-        global i
-        if (i<img.shape[0]-1):
-            i += 1
-        else:
-            i=0
-        im.set_array(img[i])
-        titleValue = i
-        if (len(frameValues) == img.shape[0]) :
-            titleValue = frameValues[i]
-            
-        plt.title(title.format(titleValue))
-        
-        return im,
-    
-    ani = animation.FuncAnimation(fig, updatefig, blit=True)
-
-    dpi = 200
-    writer = animation.writers['ffmpeg'](fps=fps)
-    ani.save(fname,writer=writer,dpi=dpi)
