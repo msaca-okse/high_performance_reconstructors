@@ -1,6 +1,7 @@
 # Neutron and X-ray CT Reconstruction
 
-Reproducibility code for the paper. Two independent CT reconstruction pipelines
+Reproducibility code for "Direct detection of hydrogen reveals a new macroscopic crustal water reservoir on early Mars", E.B. Naver, K.W. Nikolajsen at al.
+Two independent CT reconstruction pipelines
 (neutron and x-ray) followed by a joint registration step.
 
 ## Repository structure
