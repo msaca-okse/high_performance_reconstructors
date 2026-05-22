@@ -22,7 +22,7 @@ n_projections: 1125       # number of rotation angles
 n_pixels:      2048       # raw (uncropped) detector size — used only for OB pre-allocation
 n_ob:          240        # number of open-beam flat-field images
 ob_file_start: 3          # 1-based file index of the first OB FITS file
-stride:        10          # use every Nth projection (stride: 10 = 1/10 angles, good for quick tests)
+stride:        1          # use every Nth projection (stride: 10 = 1/10 angles, good for quick tests)
 
 # Projection ROI: remove dead detector edges before any processing.
 # Coordinates are in the original uncropped pixel space.
@@ -39,15 +39,30 @@ proj_roi:
 # The slice axis runs along detector rows (vertical / z direction).
 # slice_offset and n_slices are in original (uncropped) row space.
 # Set n_slices to null to use all rows from slice_offset to proj_roi.row_end.
-n_slices:     128
+n_slices:     8
 slice_offset: 1000        # row index (original pixel space) of the first target slice
 
 # Beam-monitor region used to compute the per-image dose scalar (D) and OB dose (D0).
+# Coordinates are in the original uncropped pixel space (2048×2048); the code
+# subtracts proj_roi offsets (row_start=50, col_start=90) before indexing.
 ob_monitor_region:
-  row_start: 1061
-  row_end:   1274
-  col_start: 1570
-  col_end:   1714
+  row_start: 1111   # cropped 1061 + row_offset 50
+  row_end:   1324   # cropped 1274 + row_offset 50
+  col_start: 1660   # cropped 1570 + col_offset 90
+  col_end:   1804   # cropped 1714 + col_offset 90
+
+# ── Morphological spot cleaning ───────────────────────────────────────────────
+# Replaces the simple median spotclean; matches iu.morph_spot_clean() parameters
+# from preprocessor_NA.py (th=0.5, size=7, method=0).
+# th_peaks : cumulative-histogram fraction threshold for bright spots (reference: 0.5)
+# th_holes : cumulative-histogram fraction threshold for dark spots  (reference: 0.5)
+# method   : 0 = separated 1D median filters, 1 = simultaneous 2D median
+# size     : median filter footprint in pixels                       (reference: 7)
+spot_clean:
+  th_peaks: 0.5
+  th_holes: 0.5
+  method:   0
+  size:     7
 
 # Circular beam mask — pixels outside the beam are zeroed after log-normalisation.
 # Defined as the largest circle fitting inside the bounding rectangle of the beam.
@@ -63,8 +78,8 @@ gpu_size: 16              # available GPU memory in GB; data is split to use ≤
 
 # ── Reconstruction ────────────────────────────────────────────────────────────
 reconstruction:
-  method:        fbp    # 'tv' for TV-regularised FISTA (slow, high quality) or 'fbp' (fast, for sanity checks)
-  alpha:         300  # TV regularisation weight (only used when method: tv)
+  method:        tv    # 'tv' for TV-regularised FISTA (slow, high quality) or 'fbp' (fast, for sanity checks)
+  alpha:         0.3  # TV regularisation weight (only used when method: tv)
   n_iterations:  120
   initial_angle: 10    # detector rotation offset in degrees
   # Reconstruct only a sub-region of the full FOV (speeds up recon, saves GPU memory).
@@ -109,14 +124,60 @@ ring_removal:
   wname:  5
   sigma:  0.1
 
+# ── Gaussian edge padding ─────────────────────────────────────────────────────
+# Applied after per-projection processing and before ring removal.
+# Smoothly attenuates sinogram values to zero outside the circular beam region
+# using a Gaussian ramp, reducing ringing artefacts at the detector edges in FBP.
+#
+# Matches extended_data.ExtendedData.pad_edges() from the reference pipeline
+# (bias=20, sigma=100, cutoff=10, pad_mean_window_size=50).
+#
+# Beam edge column positions are computed analytically from beam_roi rather than
+# via determine_edge2, because determine_edge2 fits a circle to the variance
+# image and needs the *full* detector-height sinogram to see the top/bottom arcs
+# of the beam circle.  With only n_slices rows (all interior to the beam), the
+# fitter returns empty index arrays and gaussian_padding zeros every slice.
+# ma.gaussian_padding is still called directly with the analytically derived indices.
+#
+# bias              : inward pixel bias on the beam edge (same as determine_edge2's
+#                     radius inset; shrinks effective beam by this many px; default 20)
+# sigma             : Gaussian std-dev of the ramp in pixels       (reference: 100)
+# cutoff            : ramp is zero beyond cutoff×sigma pixels      (reference: 10)
+# pad_mean_window_size : pixels inward from edge for the reference mean (reference: 50)
+gaussian_padding:
+  enabled: true
+  bias:                 20
+  sigma:               100
+  cutoff:               10
+  pad_mean_window_size: 50
+
 # ── Geometry correction (tilt + centre of rotation) ──────────────────────────
 # Applied per-projection after spot cleaning, before slicing.
-# Parameters taken from reference CTcorrector run (preprocessor_NA.py):
-#   tilt_angle_deg : detector tilt in degrees  (reference: 0.325)
-#   cor_shift_px   : COR 'translation' variable in reference code (reference: -26);
-#                    the 3D transform applies −cor_shift_px as the x-translation,
-#                    matching  translation = [-translation, 0, 0]  in the reference.
-# Set both to 0.0 to disable (no-op, no SimpleITK needed).
+#
+# tilt_angle_deg : detector tilt in degrees  (reference: 0.325)
+# cor_shift_px   : horizontal pixel shift to centre the rotation axis.
+#
+# Sign convention: SetTranslation((-cor_shift_px, 0)) is passed to SimpleITK
+# Euler2DTransform, so a negative cor_shift_px shifts content to the LEFT
+# (correcting for the rotation axis being to the RIGHT of detector centre).
+#
+# Derivation of the corrected value
+# ----------------------------------
+# The original calibration (translation = -26 → shift +26 px) was performed
+# using a 3D CTcorrector that rotates around the image ORIGIN (corner z=0)
+# rather than the image centre.  The current 2D per-projection implementation
+# rotates around the image CENTRE (w/2, h/2), which introduces a constant
+# additional leftward shift of:
+#
+#   sin(tilt_angle_deg) × (h/2)  =  sin(0.325°) × 930  ≈  5.28 px
+#
+# where h = row_end - row_start = 1910 - 50 = 1860, h/2 = 930.
+#
+# To match the physical rotation-axis position from the 3D calibration:
+#   cor_shift_px (2D) = -(26 - 5.28) ≈ -21
+#
+# If the proj_roi column bounds change, recompute as:
+#   cor_shift_px = -(ref_translation - sin(tilt_deg) * (row_end - row_start) / 2)
 geometry_correction:
   tilt_angle_deg: 0.325
-  cor_shift_px:   -26
+  cor_shift_px:   -21

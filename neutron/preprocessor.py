@@ -8,7 +8,7 @@ Pipeline:
        - Compute per-image dose scalar D from the beam-monitor region.
        - Log-normalise with dose correction: -(log(proj) - log(OB) + log(D0) - log(D))
        - Zero pixels outside the circular beam (beam mask).
-       - Spot-clean on the full detector image.
+       - Morphological spot-clean on the full detector image.
        - Detector tilt and centre-of-rotation (COR) correction (SimpleITK).
        - Extract the target slice range.
   3. Assemble sinograms and save one TIFF per vertical slice.
@@ -34,6 +34,10 @@ from multiprocessing import Pool, cpu_count
 # Allow importing imageutils from the same directory as this script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import imageutils as iu
+
+# Allow importing module_auxiliary (and related helpers) from the context folder
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "context"))
+import module_auxiliary as ma
 
 try:
     import SimpleITK as sitk
@@ -252,8 +256,15 @@ def _process_projection(i_proj: int) -> np.ndarray:
     # Zero out pixels outside the beam circle to remove amplified edge artefacts
     normalized *= _mask
 
-    # Spot cleaning on the masked detector image
-    cleaned = iu.spotclean(normalized, size=10)
+    # Morphological spot cleaning on the masked detector image
+    sc = _cfg.get("spot_clean", {})
+    cleaned = iu.morph_spot_clean(
+        normalized,
+        th_peaks=sc.get("th_peaks", 0.5),
+        th_holes=sc.get("th_holes", 0.5),
+        method=sc.get("method", 0),
+        size=sc.get("size", 7),
+    )
 
     # Detector tilt and COR correction
     corrected = _correct_geometry(cleaned, _cfg.get("geometry_correction", {}))
@@ -311,7 +322,14 @@ def _process_projection_debug(i_proj: int, ob_mean: np.ndarray, D0: float, cfg: 
 
     masked = normalized * mask
 
-    cleaned = iu.spotclean(masked, size=10)
+    sc = cfg.get("spot_clean", {})
+    cleaned = iu.morph_spot_clean(
+        masked,
+        th_peaks=sc.get("th_peaks", 0.5),
+        th_holes=sc.get("th_holes", 0.5),
+        method=sc.get("method", 0),
+        size=sc.get("size", 7),
+    )
 
     corrected = _correct_geometry(cleaned, cfg.get("geometry_correction", {}))
 
@@ -446,6 +464,110 @@ def preprocess(cfg: dict, ob_mean: np.ndarray = None, D0: float = None) -> np.nd
 
 
 # ---------------------------------------------------------------------------
+# Gaussian edge padding
+# ---------------------------------------------------------------------------
+
+def _beam_edge_indices(cfg: dict) -> list:
+    """Return beam left/right edge column positions for each target sinogram slice.
+
+    ma.determine_edge2 fits a circle to the angular-variance image to find the
+    beam boundary, but it requires the *full* sinogram stack (all detector rows)
+    so that the top and bottom arcs of the circular beam are visible.  When only
+    a subset of rows is used (as here), the fitter has nothing to lock onto and
+    returns empty index lists — causing ma.gaussian_padding to zero every slice.
+
+    Instead we derive the column positions analytically from beam_roi (the same
+    circle used to build the beam mask).  The same ``bias`` inset is applied to
+    the radius, matching what determine_edge2 does internally.
+
+    Returns
+    -------
+    list of length n_slices; each element is one of:
+      np.array([x_left, x_right], dtype=int)  — inside the beam
+      np.array([], dtype=int)                 — outside the beam (row is zeroed)
+    """
+    pr      = cfg.get("proj_roi", {})
+    row_off = pr.get("row_start", 0)
+    col_off = pr.get("col_start", 0)
+
+    roi = cfg["beam_roi"]
+    # Beam circle in cropped-image pixel space (same geometry as build_beam_mask)
+    center_col = (roi["x_min"] + roi["x_max"]) / 2.0 - col_off
+    center_row = (roi["y_min"] + roi["y_max"]) / 2.0 - row_off
+    radius     = min(roi["x_max"] - roi["x_min"], roi["y_max"] - roi["y_min"]) / 2.0
+
+    bias     = cfg.get("gaussian_padding", {}).get("bias", 20)
+    r_biased = max(radius - bias, 0.0)
+
+    slice_offset = cfg["slice_offset"]
+    n_slices     = cfg["n_slices"] or 0
+
+    indices = []
+    for j in range(n_slices):
+        row_cropped = (slice_offset - row_off) + j   # this row in cropped-image space
+        dy = row_cropped - center_row
+        if abs(dy) >= r_biased:
+            indices.append(np.array([], dtype=int))
+        else:
+            half_w  = np.sqrt(r_biased ** 2 - dy ** 2)
+            x_left  = max(0, int(np.round(center_col - half_w)))
+            x_right = int(np.round(center_col + half_w))
+            indices.append(np.array([x_left, x_right], dtype=int))
+    return indices
+
+
+def gaussian_pad_sinograms(cfg: dict, sinograms: np.ndarray) -> np.ndarray:
+    """Smoothly attenuate sinogram values to zero outside the circular beam region.
+
+    Follows extended_data.ExtendedData.pad_edges() from the reference pipeline.
+    Beam edge column positions are computed analytically from beam_roi (rather
+    than via determine_edge2, which requires the full detector-height sinogram
+    to fit a circle reliably).  ma.gaussian_padding is then called directly with
+    those positions, using the same parameters as the reference pad_edges() call:
+      bias=20, sigma=100, cutoff=10, pad_mean_window_size=50.
+
+    Parameters (from cfg['gaussian_padding'])
+    -----------------------------------------
+    enabled              : bool  — run padding (default False)
+    bias                 : int   — inward pixel bias on the detected edge (default 20)
+    sigma                : float — Gaussian std-dev of the ramp, pixels (default 100)
+    cutoff               : int   — ramp is zero beyond cutoff*sigma px  (default 10)
+    pad_mean_window_size : int   — pixels inward from edge for the reference
+                                   mean level of the ramp               (default 50)
+
+    Parameters
+    ----------
+    sinograms : float32 (n_proj, n_slices, n_pixels) — from preprocess()
+
+    Returns
+    -------
+    float32 (n_proj, n_slices, n_pixels) — edge-padded sinograms
+    """
+    gp_cfg = cfg.get("gaussian_padding", {})
+    sigma                = gp_cfg.get("sigma", 100)
+    cutoff               = gp_cfg.get("cutoff", 10)
+    pad_mean_window_size = gp_cfg.get("pad_mean_window_size", 50)
+
+    indices = _beam_edge_indices(cfg)
+
+    # ma.gaussian_padding expects (N_slices, N_angles, N_pixels)
+    data_szp = sinograms.transpose(1, 0, 2)
+
+    print(f"Applying Gaussian padding (sigma={sigma}, cutoff={cutoff}, "
+          f"pad_mean_window_size={pad_mean_window_size}) ...")
+    t0 = time.time()
+    data_szp = ma.gaussian_padding(
+        data_szp, indices,
+        sigma=sigma,
+        cutoff=cutoff,
+        pad_mean_window_size=pad_mean_window_size,
+    )
+    print(f"  Gaussian padding done in {time.time() - t0:.1f}s")
+
+    return data_szp.transpose(1, 0, 2).astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # Ring removal
 # ---------------------------------------------------------------------------
 
@@ -554,6 +676,9 @@ if __name__ == "__main__":
         save_debug_images(cfg, ob_mean, D0, mask)
 
     sinograms = preprocess(cfg, ob_mean, D0)
+
+    if cfg.get("gaussian_padding", {}).get("enabled", False):
+        sinograms = gaussian_pad_sinograms(cfg, sinograms)
 
     if cfg.get("ring_removal", {}).get("enabled", False):
         sinograms = remove_rings(cfg, sinograms)
